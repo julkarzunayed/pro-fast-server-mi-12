@@ -33,15 +33,37 @@ async function run() {
 
         const parcelsCollection = database.collection('parcels');
 
+        // GET API: Retrieve parcels, with optional user email query and latest first
         app.get('/parcels', async (req, res) => {
-            const result = await sendParcelCollections.find({}).toArray();
-            res.send(result);
+            try {
+                if (!parcelsCollection) {
+                    return res.status(503).json({ message: "Database not connected or 'parcelCollections' not initialized yet." });
+                }
+
+                const userEmail = req.query?.userEmail; // Get userEmail from query parameters
+                let query = {}; // Initialize an empty query object
+
+                // If userEmail is provided, add it to the query filter
+                if (userEmail) {
+                    query.created_by = userEmail;
+                }
+
+                // Find documents based on the constructed query
+                // Sort by 'createdAt' field in descending order (-1 for latest first)
+                const parcels = await parcelsCollection.find(query).sort({ createdAt: -1 }).toArray();
+
+                res.status(200).json(parcels);
+
+            } catch (error) {
+                console.error("Error retrieving parcels:", error);
+                res.status(500).json({ message: "Failed to retrieve parcels.", error: error.message });
+            }
         });
 
         app.post('/parcels', async (req, res) => {
             try {
                 const newParcel = req.body;
-                console.log(newParcel);
+                // console.log(newParcel);
                 const result = await parcelsCollection.insertOne(newParcel);
                 res.send(result);
             } catch (error) {
