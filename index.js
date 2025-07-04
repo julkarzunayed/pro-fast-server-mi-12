@@ -12,7 +12,7 @@ app.use(express.json()); // Parse JSON request bodies
 
 
 
-const { MongoClient, ServerApiVersion } = require('mongodb');
+const { MongoClient, ServerApiVersion, ObjectId } = require('mongodb');
 const uri = `mongodb+srv://${process.env.DB_USER}:${process.env.DB_PASS}@cluster0.qkncn1b.mongodb.net/?retryWrites=true&w=majority&appName=Cluster0`;
 
 // Create a MongoClient with a MongoClientOptions object to set the Stable API version
@@ -70,7 +70,26 @@ async function run() {
                 console.error(error);
                 res.status(500).send({ message: 'Failed to create parcel' })
             }
-        })
+        });
+
+        app.delete('/parcels/:id', async (req, res) => {
+            try {
+                
+                const id = req.params.id;
+
+                // Convert the string ID to a MongoDB ObjectId
+                const query = { _id: new ObjectId(id) };
+
+                // Delete the document from the 'parcelsCollection' collection
+                const result = await parcelsCollection.deleteOne(query);
+
+                res.send(result);
+
+            } catch (error) {
+                console.error("Error deleting parcel:", error);
+                res.status(500).json({ message: "Failed to delete parcel.", error: error.message });
+            }
+        });
 
 
         // Send a ping to confirm a successful connection
