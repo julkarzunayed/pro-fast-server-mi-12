@@ -1,10 +1,12 @@
-require('dotenv').config(); // Load environment variables from .env file
+require('dotenv').config();
 const express = require('express');
 const mongoose = require('mongoose');
 const cors = require('cors');
 
+
 const app = express();
 const PORT = process.env.PORT || 5000;
+const stripe = require("stripe")(process.env.STRIP_SECRET);
 
 // Middleware
 app.use(cors()); // Enable CORS for all routes
@@ -40,12 +42,16 @@ async function run() {
                     return res.status(503).json({ message: "Database not connected or 'parcelCollections' not initialized yet." });
                 }
 
-                const userEmail = req.query?.userEmail; // Get userEmail from query parameters
+                const userEmail = req.query?.userEmail;
+                const parcelId = req.query?.parcelId;
                 let query = {}; // Initialize an empty query object
 
                 // If userEmail is provided, add it to the query filter
                 if (userEmail) {
                     query.created_by = userEmail;
+                }
+                if (parcelId) {
+                    query._id = new ObjectId(parcelId);
                 }
 
                 // Find documents based on the constructed query
@@ -74,7 +80,7 @@ async function run() {
 
         app.delete('/parcels/:id', async (req, res) => {
             try {
-                
+
                 const id = req.params.id;
 
                 // Convert the string ID to a MongoDB ObjectId
@@ -82,13 +88,29 @@ async function run() {
 
                 // Delete the document from the 'parcelsCollection' collection
                 const result = await parcelsCollection.deleteOne(query);
-
                 res.send(result);
 
             } catch (error) {
                 console.error("Error deleting parcel:", error);
                 res.status(500).json({ message: "Failed to delete parcel.", error: error.message });
             }
+        });
+
+        app.post("/create-checkout-session", async (req, res) => {
+            const amountInCents = req.body?.amountInCents;
+            console.log(amountInCents)
+            try {
+                const paymentIntent = await stripe.paymentIntents.create({
+                    amount: amountInCents, // Amount in cents
+                    currency: 'usd',
+                    payment_method_types: ['card'],
+                });
+
+                res.json({ clientSecret: paymentIntent.client_secret });
+            } catch (error) {
+                res.status(500).json({ error: error.message });
+            }
+
         });
 
 
