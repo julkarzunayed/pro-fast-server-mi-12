@@ -34,6 +34,7 @@ async function run() {
         const database = client.db("pro_fast_db");
 
         const parcelsCollection = database.collection('parcels');
+        const paymentHistoryCollection = database.collection("paymentHistory");
 
         // GET API: Retrieve parcels, with optional user email query and latest first
         app.get('/parcels', async (req, res) => {
@@ -78,6 +79,78 @@ async function run() {
             }
         });
 
+        // PATCH API: Update parcel payment_status to 'paid' and add payment_time
+        app.patch('/parcels', async (req, res) => {
+            try {
+                const {
+                    parcelId,
+                    email,
+                    amount,
+                    transactionId,
+                    paymentMethod,
+                } = req.body
+                console.log(parcelId)
+                // Validate if the provided ID is a valid MongoDB ObjectId format
+                if (!ObjectId.isValid(parcelId)) {
+                    return res.status(400).json({ message: "Invalid Parcel ID format." });
+                }
+
+                const objectId = new ObjectId(parcelId);
+                const paymentTime = new Date(); // Get current time for payment
+
+                // Find the parcel first to get details for payment history
+                const existingParcel = await parcelsCollection.findOne({ _id: objectId });
+
+                if (!existingParcel) {
+                    return res.status(404).json({ message: "Parcel not found with the provided ID." });
+                }
+
+                // Prevent multiple payments for the same parcel unless specifically allowed
+                if (existingParcel.payment_status === 'paid') {
+                    return res.status(400).json({ message: "Parcel is already marked as paid." });
+                }
+
+                // Update the parcel's payment status and add payment_time
+                const updateResult = await parcelsCollection.findOneAndUpdate(
+                    { _id: objectId },
+                    {
+                        $set: {
+                            payment_status: 'paid',
+                            payment_time: paymentTime,
+                        }
+                    },
+                    { returnDocument: 'after' } // Return the updated document
+                );
+                // Ensure update was successful value
+                if (!updateResult.payment_status === 'paid') {
+                    console.log("Failed to update parcel payment status.")
+                    return res.status(500).json({ message: "Failed to update parcel payment status." });
+                }
+
+                // Record payment in paymentHistory collection
+                const paymentRecord = {
+                    parcel_id: parcelId,
+                    user_email: email,
+                    amount,
+                    payment_time: new Date(),
+                    payment_time_strung: new Date().toISOString(),
+                    transactionId,
+                    paymentMethod,
+                };
+
+                const paymentResult = await paymentHistoryCollection.insertOne(paymentRecord);
+
+                res.status(200).json({
+                    message: "Parcel payment status updated to 'paid' and payment history recorded.",
+                    insertedId: paymentResult.insertedId,
+                });
+
+            } catch (error) {
+                console.error("Error updating parcel payment status:", error);
+                res.status(500).json({ message: "Failed to update parcel payment status.", error: error.message });
+            }
+        });
+
         app.delete('/parcels/:id', async (req, res) => {
             try {
 
@@ -93,6 +166,33 @@ async function run() {
             } catch (error) {
                 console.error("Error deleting parcel:", error);
                 res.status(500).json({ message: "Failed to delete parcel.", error: error.message });
+            }
+        });
+
+        // GET API: Retrieve payment history, with optional user email query and latest first
+        app.get('/paymentHistory', async (req, res) => {
+            try {
+                if (!paymentHistoryCollection) {
+                    return res.status(503).json({ message: "Database not connected or 'paymentHistoryCollection' not initialized yet." });
+                }
+
+                const userEmail = req.query.userEmail; // Get userEmail from query parameters
+                let query = {}; // Initialize an empty query object
+
+                // If userEmail is provided, filter by it
+                if (userEmail) {
+                    query.user_email = userEmail;
+                }
+
+                // Find documents based on the constructed query
+                // Sort by 'payment_time' or 'recordedAt' in descending order (-1 for latest first)
+                const history = await paymentHistoryCollection.find(query).sort({ payment_time: -1 }).toArray();
+
+                res.status(200).json(history);
+
+            } catch (error) {
+                console.error("Error retrieving payment history:", error);
+                res.status(500).json({ message: "Failed to retrieve payment history.", error: error.message });
             }
         });
 
