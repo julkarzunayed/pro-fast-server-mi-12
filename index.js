@@ -33,8 +33,23 @@ async function run() {
 
         const database = client.db("pro_fast_db");
 
+        const usersCollection = database.collection('users')
         const parcelsCollection = database.collection('parcels');
         const paymentHistoryCollection = database.collection("paymentHistory");
+
+        app.post('/users', async (req, res) => {
+            const email = req.body.email;
+
+            const isUserExists = await usersCollection.findOne({ email });
+
+            if (isUserExists) {
+                return res.status(200).send({ message: "User already exists", insertedId: false })
+            };
+            const user = req.body;
+
+            const result = await usersCollection.insertOne(user);
+            res.send(result);
+        })
 
         // GET API: Retrieve parcels, with optional user email query and latest first
         app.get('/parcels', async (req, res) => {
@@ -170,7 +185,7 @@ async function run() {
         });
 
         // GET API: Retrieve payment history, with optional user email query and latest first
-        app.get('/paymentHistory', async (req, res) => {
+        app.get('/payments', async (req, res) => {
             try {
                 if (!paymentHistoryCollection) {
                     return res.status(503).json({ message: "Database not connected or 'paymentHistoryCollection' not initialized yet." });
